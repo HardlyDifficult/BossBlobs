@@ -7,6 +7,7 @@ export interface IBlobProps
   position: Vector3Component,
   rotation: Vector3Component,
   isDead: boolean,
+  lastChanged: Date,
 }
 
 export const Blob = (props: IBlobProps) =>

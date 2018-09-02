@@ -4,6 +4,7 @@ import { Chest, IChestProps, ChestState } from 'components/Chest';
 import { Vector3Component } from 'metaverse-api';
 import { Message } from 'components/Message';
 import { Ground } from 'components/Ground';
+import { GunDB } from 'GunDB';
 
 export function sleep(ms: number): Promise<void> 
 {
@@ -14,14 +15,15 @@ let objectCount = 0;
 
 export default class SampleScene extends DCL.ScriptableScene 
 {
-  blobSpawnTimeout?: NodeJS.Timer; // how-to prevent multiple spawns
-  nextSpawnTime?: Date; // shared
+  blobSpawnTimeout?: NodeJS.Timer; 
+  nextSpawnTime?: Date; 
+  nextSpawn?: NodeJS.Timer;
   blobAnimationLerp?: NodeJS.Timer; 
   messageTimeout?: NodeJS.Timer;
 
   state: {
-    blob?: IBlobProps, // how-to deal with multiple movers?
-    chest: IChestProps, // activate for all then individual states to redeem
+    blob?: IBlobProps, 
+    chest: IChestProps, 
     message?: string,
     playerPosition: Vector3Component,
   } = {
@@ -34,22 +36,87 @@ export default class SampleScene extends DCL.ScriptableScene
     playerPosition: {x: 0, y: 0, z: 0},
   };
 
+  // Init
   sceneDidMount()
   {
-    this.spawnBlob();
     this.eventSubscriber.on("Chest_click", () => this.onChestClick());
     this.subscribeTo("positionChanged", (e) =>
     {
       this.setState({playerPosition: e.position})
     });
-  }
-  sceneDidUpdate()
-  {
-    // upload changes
+
+    GunDB.init((blob) => this.onBlobUpdated(blob), (nextSpawn) => this.onNextSpawnStarted(nextSpawn));
   }
 
+  // Events
   async onBlobClick()
   {
+    GunDB.killBlob();
+    await this.killBlob();
+  }
+  
+  async onChestClick()
+  {
+    if(this.state.chest.chestState == ChestState.Full)
+    {
+      this.setChestState(ChestState.Open);
+    }
+    else if(this.state.chest.chestState == ChestState.Open)
+    {
+      this.setChestState(ChestState.OpenEmpty);
+      this.showMessage("+100 Gold");
+    }
+    else if(this.state.chest.chestState == ChestState.OpenEmpty)
+    {
+      this.setChestState(ChestState.Empty);
+    }
+    else if(!this.state.blob)
+    {
+      if(!this.nextSpawnTime || this.nextSpawnTime.getTime() <= Date.now())
+      {
+        const timeTillNextSpawn = 15000;
+        this.nextSpawnTime = new Date(Date.now());
+        this.nextSpawnTime.setMilliseconds(this.nextSpawnTime.getMilliseconds() + timeTillNextSpawn);
+        GunDB.startSpawnCountdown(this.nextSpawnTime);
+      }
+      if(this.nextSpawnTime)
+      {
+        const timeTillNextSpawn = this.nextSpawnTime.getTime() - new Date(Date.now()).getTime();
+        this.showMessage("Next spawn in " + Math.round(timeTillNextSpawn / 1000)); 
+      }
+    }
+  }
+  async onBlobUpdated(blob?: {position: Vector3Component, lastChanged: Date})
+  {
+    if(this.state.blob && blob)
+    {
+      this.state.blob.position = blob.position;
+      this.state.blob.lastChanged = blob.lastChanged;
+      this.setState({blob: this.state.blob});
+    }
+    else if(blob)
+    {
+      this.spawnBlob();
+    }
+    else if(this.state.blob)
+    { // Destroy blob
+      await this.killBlob(); 
+    }
+  }
+
+  async onNextSpawnStarted(nextSpawnTime: Date)
+  {
+    this.startSpawnCountdown(nextSpawnTime);
+  }
+  
+  // Helpers
+  async killBlob()
+  {
+    if(this.nextSpawn)
+    {
+      clearTimeout(this.nextSpawn);
+    }
+    this.nextSpawnTime = undefined;
     this.state.chest.chestState = ChestState.Full;
     if(this.state.blob)
     {
@@ -69,34 +136,15 @@ export default class SampleScene extends DCL.ScriptableScene
     this.setState({blob: undefined});
   }
 
-  async onChestClick()
+  async startSpawnCountdown(nextSpawnTime: Date)
   {
-    if(this.state.chest.chestState == ChestState.Full)
+    this.nextSpawnTime = nextSpawnTime;
+    const timeTillNextSpawn = nextSpawnTime.getTime() - Date.now();
+    if(this.nextSpawn)
     {
-      this.setChestState(ChestState.Open);
+      clearTimeout(this.nextSpawn);
     }
-    else if(this.state.chest.chestState == ChestState.Open)
-    {
-      this.setChestState(ChestState.OpenEmpty);
-      this.showMessage("+100 Gold");
-    }
-    else if(this.state.chest.chestState == ChestState.OpenEmpty)
-    {
-      this.setChestState(ChestState.Empty);
-      const timeTillNextSpawn = 3000;
-      this.nextSpawnTime = new Date(Date.now());
-      this.nextSpawnTime.setMilliseconds(this.nextSpawnTime.getMilliseconds() + timeTillNextSpawn);
-      await sleep(timeTillNextSpawn);
-      this.spawnBlob();
-    }
-    else // empty 
-    {
-      if(this.nextSpawnTime)
-      {
-        const timeTillNextSpawn = this.nextSpawnTime.getSeconds() - new Date(Date.now()).getSeconds();
-        this.showMessage("Next spawn in " + timeTillNextSpawn); 
-      }
-    }
+    this.nextSpawn = setTimeout(() => this.spawnBlob(), timeTillNextSpawn);
   }
 
   setChestState(state: ChestState)
@@ -132,7 +180,7 @@ export default class SampleScene extends DCL.ScriptableScene
     }
   }
 
-  async showMessage(message: string, duration: number = 3000)
+  async showMessage(message: string, duration: number = 1500)
   {
     if(this.messageTimeout)
     {
@@ -148,11 +196,17 @@ export default class SampleScene extends DCL.ScriptableScene
 
   spawnBlob()
   {
+    if(this.state.blob)
+    { // We already have one
+      return;
+    }
+
     this.setState({blob: {
       id: objectCount++,
       position: {x: 5, y: 0, z: 5},
       rotation: {x: 0, y: 0, z: 0},
       isDead: false,
+      lastChanged: new Date()
     }});
     if(this.state.blob)
     {
@@ -165,30 +219,34 @@ export default class SampleScene extends DCL.ScriptableScene
   {
     while(this.state.blob && !this.state.blob.isDead)
     {
-      let target;
-      do
+      if(Date.now() - this.state.blob.lastChanged.getDate() > 1000)
       {
-        target = JSON.parse(JSON.stringify(this.state.blob.position));
-        switch(Math.floor(Math.random() * 4))
-        { // Pick a random direction
-          case 0:
-            target.x++;
-            break;
-          case 1:
-            target.x--;
-            break;
-          case 2:
-            target.z++;
-            break;
-          default:
-            target.z--;
-            break;
-        }
-      } while(!this.positionIsValid(target));
+        let target;
+        do
+        {
+          target = JSON.parse(JSON.stringify(this.state.blob.position));
+          switch(Math.floor(Math.random() * 4))
+          { // Pick a random direction
+            case 0:
+              target.x++;
+              break;
+            case 1:
+              target.x--;
+              break;
+            case 2:
+              target.z++;
+              break;
+            default:
+              target.z--;
+              break;
+          }
+        } while(!this.positionIsValid(target));
 
-      this.state.blob.position = target;
-      this.setState({blob: this.state.blob});
-
+        this.state.blob.position = target;
+        this.state.blob.lastChanged = new Date(Date.now());
+        this.setState({blob: this.state.blob});
+        GunDB.setBlobPosition(target);
+      }
       await sleep(1000);
     }
   }
@@ -208,6 +266,7 @@ export default class SampleScene extends DCL.ScriptableScene
     return true;
   }
 
+  // Render
   renderBlob()
   {
     if(this.state.blob)

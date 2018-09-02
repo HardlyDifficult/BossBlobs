@@ -11,5 +11,8 @@
   "license": "MIT",
   "devDependencies": {
     "metaverse-api": "latest"
+  },
+  "dependencies": {
+    "gun": "^0.9.99993"
   }
 }
