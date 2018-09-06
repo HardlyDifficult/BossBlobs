@@ -14,9 +14,9 @@ export const Ground = () =>
 			<plane
 				id="Ground"
 				material="#groundMat"
-				position={{x: 5, y: 0, z: 5}}
+				position={{x: 10, y: 0, z: 10}}
 				rotation={{x: 90, y: 0, z: 0}}
-				scale={9.99}
+				scale={19.99}
 			/>
 		</entity>
 	)

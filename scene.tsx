@@ -5,6 +5,10 @@ import { Vector3Component } from 'metaverse-api';
 import { Message } from 'components/Message';
 import { Ground } from 'components/Ground';
 import { GunDB } from 'GunDB';
+import { setInterval, clearInterval, setTimeout, clearTimeout } from 'timers';
+
+
+// TODO text does not work up high
 
 export function sleep(ms: number): Promise<void> 
 {
@@ -17,7 +21,6 @@ export default class SampleScene extends DCL.ScriptableScene
 {
   blobSpawnTimeout?: NodeJS.Timer; 
   nextSpawnTime?: Date; 
-  nextSpawn?: NodeJS.Timer;
   blobAnimationLerp?: NodeJS.Timer; 
   messageTimeout?: NodeJS.Timer;
 
@@ -28,7 +31,7 @@ export default class SampleScene extends DCL.ScriptableScene
     playerPosition: Vector3Component,
   } = {
     chest: {
-      position: {x: 5, y: 0, z: 9},
+      position: {x: 10, y: 0, z: 19},
       rotation: {x: 0, y: 0, z: 0},
       chestState: ChestState.Empty,
       animationWeight: 1,
@@ -112,9 +115,9 @@ export default class SampleScene extends DCL.ScriptableScene
   // Helpers
   async killBlob()
   {
-    if(this.nextSpawn)
+    if(this.blobSpawnTimeout)
     {
-      clearTimeout(this.nextSpawn);
+      clearTimeout(this.blobSpawnTimeout);
     }
     this.nextSpawnTime = undefined;
     this.state.chest.chestState = ChestState.Full;
@@ -132,19 +135,21 @@ export default class SampleScene extends DCL.ScriptableScene
     {
       clearInterval(this.blobSpawnTimeout);
     }
-    await sleep(2000);
-    this.setState({blob: undefined});
+    this.blobSpawnTimeout = setTimeout(() => 
+    {
+      this.setState({blob: undefined});
+    }, 2000);
   }
 
   async startSpawnCountdown(nextSpawnTime: Date)
   {
     this.nextSpawnTime = nextSpawnTime;
     const timeTillNextSpawn = nextSpawnTime.getTime() - Date.now();
-    if(this.nextSpawn)
+    if(this.blobSpawnTimeout)
     {
-      clearTimeout(this.nextSpawn);
+      clearTimeout(this.blobSpawnTimeout);
     }
-    this.nextSpawn = setTimeout(() => this.spawnBlob(), timeTillNextSpawn);
+    this.blobSpawnTimeout = setTimeout(() => this.spawnBlob(), timeTillNextSpawn);
   }
 
   setChestState(state: ChestState)
@@ -200,10 +205,14 @@ export default class SampleScene extends DCL.ScriptableScene
     { // We already have one
       return;
     }
+    if(this.blobSpawnTimeout)
+    {
+      clearTimeout(this.blobSpawnTimeout);
+    }
 
     this.setState({blob: {
       id: objectCount++,
-      position: {x: 5, y: 0, z: 5},
+      position: {x: 10, y: 0, z: 18},
       rotation: {x: 0, y: 0, z: 0},
       isDead: false,
       lastChanged: new Date()
@@ -253,12 +262,12 @@ export default class SampleScene extends DCL.ScriptableScene
 
   positionIsValid(position: Vector3Component): boolean
   {
-    if(position.x < 1 || position.x > 9 || position.z < 1 || position.z > 9)
+    if(position.x < 1 || position.x > 19 || position.z < 1 || position.z > 19)
     { // In bounds
       return false;
     }
 
-    if(Math.abs(position.x - this.state.chest.position.x) <= 2 && Math.abs(position.z - this.state.chest.position.z) <= 2)
+    if(Math.abs(position.x - this.state.chest.position.x) <= 2 && Math.abs(position.z - this.state.chest.position.z) <= 1)
     { // Not on-top of the chest
       return false;
     }
@@ -286,6 +295,7 @@ export default class SampleScene extends DCL.ScriptableScene
   {
     return (
       <scene>
+        
         {this.renderBlob()}
         {Chest(this.state.chest)}
         {this.renderMessage()}
